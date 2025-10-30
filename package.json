@@ -1,5 +1,6 @@
 {
   "name": "dashfuel-scheduler",
+  "homepage": "https://gabidombrowski.github.io/dashfuel-scheduler/",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "gh-pages -d out --dotfiles"
+    "out": "next build && touch ./out/.nojekyll",
+    "predeploy": "npm run out",
+    "deploy": "npm run predeploy && gh-pages -d out --dotfiles"
   },
   "dependencies": {
     "@mobiscroll/react": "npm:@mobiscroll/react-next-trial@^5.35.1",
