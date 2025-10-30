@@ -17,6 +17,7 @@ import {
   Popup,
   setOptions,
   Snackbar,
+  Switch,
 } from "@mobiscroll/react";
 import { ChangeEvent, useCallback, useMemo, useRef, useState } from "react";
 import "@mobiscroll/react/dist/css/mobiscroll.min.css";
@@ -31,6 +32,17 @@ setOptions({
 export default function Home() {
   const randomEvents = useMemo(() => generateRandomEvents(), []);
   const randomResources = useMemo(() => generateRandomResources(), []);
+
+  const [isDarkTheme, setIsDarkTheme] = useState<boolean>(false);
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = !isDarkTheme;
+    setIsDarkTheme(newTheme);
+    setOptions({
+      theme: "material",
+      themeVariant: newTheme ? "dark" : "light",
+    });
+  }, [isDarkTheme]);
 
   const now = useMemo(() => new Date(), []);
   const today = useMemo(
@@ -155,17 +167,17 @@ export default function Home() {
   const handleEventDoubleClick = useCallback(
     (args: MbscEventClickEvent) => {
       const nowISO = new Date().toISOString();
-      if (args.event.end! <= nowISO) {
+      if (args.event.start! <= nowISO && args.event.end! > nowISO) {
         setSnackbarConfig({
-          message: "Cannot edit completed events.",
+          message: "Cannot edit events that are currently in progress.",
         });
         setSnackbarOpen(true);
         return;
       }
 
-      if (args.event.start! <= nowISO && args.event.end! > nowISO) {
+      if (args.event.end! <= nowISO) {
         setSnackbarConfig({
-          message: "Cannot edit events that are currently in progress.",
+          message: "Cannot edit completed events.",
         });
         setSnackbarOpen(true);
         return;
@@ -267,7 +279,20 @@ export default function Home() {
   }, []);
 
   return (
-    <div>
+    <div style={{ background: isDarkTheme ? "black" : "white" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          padding: "16px",
+        }}
+      >
+        <p style={{ color: isDarkTheme ? "white" : "black" }}>Light Mode</p>
+        <Switch onChange={toggleTheme} />
+        <p style={{ color: isDarkTheme ? "white" : "black" }}>Dark Mode</p>
+      </div>
+
       <Eventcalendar
         eventDelete={true}
         data={events}
@@ -331,16 +356,14 @@ export default function Home() {
         />
 
         {isEdit ? (
-          <div className="mbsc-button-group">
-            <Button
-              className="mbsc-button-block"
-              color="danger"
-              variant="outline"
-              onClick={onDeleteClick}
-            >
-              Delete event
-            </Button>
-          </div>
+          <Button
+            className="mbsc-button-block"
+            color="danger"
+            variant="outline"
+            onClick={onDeleteClick}
+          >
+            Delete event
+          </Button>
         ) : null}
       </Popup>
 
