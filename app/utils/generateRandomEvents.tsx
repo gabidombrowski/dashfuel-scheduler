@@ -19,8 +19,9 @@ export function generateRandomEvents(count: number = 20): MbscCalendarEvent[] {
 
     // Random duration between 30 minutes and 24 hours (max)
     const maxDurationMinutes = 24 * 60; // 24 hours in minutes
-    const durationMinutes =
-      30 + Math.floor(Math.random() * (maxDurationMinutes - 30));
+    const durationIncrements = Math.floor((maxDurationMinutes - 30) / 15); // Number of 15-min increments available
+    const randomIncrements = Math.floor(Math.random() * durationIncrements);
+    const durationMinutes = 30 + randomIncrements * 15; // Duration in 15-min increments
     const end = new Date(start.getTime() + durationMinutes * 60000);
 
     events.push({

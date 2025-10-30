@@ -1,18 +1,22 @@
 "use client";
 import {
   Button,
+  Datepicker,
   Eventcalendar,
   Input,
   MbscCalendarEvent,
+  MbscCellClickEvent,
+  MbscDatepickerChangeEvent,
+  MbscDatepickerControl,
   MbscDateType,
   MbscEventcalendarView,
+  MbscEventClickEvent,
   MbscEventCreatedEvent,
+  MbscEventDeletedEvent,
   MbscPopupButton,
   Popup,
   setOptions,
-  Switch,
-  Textarea,
-  Toast,
+  Snackbar,
 } from "@mobiscroll/react";
 import { ChangeEvent, useCallback, useMemo, useRef, useState } from "react";
 import "@mobiscroll/react/dist/css/mobiscroll.min.css";
@@ -28,68 +32,63 @@ export default function Home() {
   const randomEvents = useMemo(() => generateRandomEvents(), []);
   const randomResources = useMemo(() => generateRandomResources(), []);
 
-  const [events, setEvents] = useState(randomEvents);
-  const [tempEvent] = useState<MbscCalendarEvent>();
-  const [isEdit, setIsEdit] = useState(false);
-  const [isToastOpen, setToastOpen] = useState(false);
-  const [toastText, setToastText] = useState("");
-  const [popupOpen, setPopupOpen] = useState(false);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement>();
+  const now = useMemo(() => new Date(), []);
+  const today = useMemo(
+    () => new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    [now]
+  );
+  const yesterday = useMemo(
+    () => new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1),
+    [now]
+  );
 
-  const [eventTitle, setEventTitle] = useState<string | undefined>("");
-  const [eventDescription, setEventDescription] = useState<string>("");
-  const [eventAllDay, setEventAllDay] = useState(false);
-  const [eventDate, setEventDate] = useState<MbscDateType[]>();
+  const invalidDates = useMemo(
+    () => [
+      { recurring: { repeat: "daily", until: yesterday } },
+      { start: today, end: now },
+    ],
+    [now, today, yesterday]
+  );
+
+  const [events, setEvents] = useState<MbscCalendarEvent[]>(randomEvents);
+  const [tempEvent, setTempEvent] = useState<MbscCalendarEvent>();
+  const [popupOpen, setPopupOpen] = useState<boolean>(false);
+  const [isEdit, setEdit] = useState<boolean>(false);
+  const [start, startRef] = useState<Input | null>(null);
+  const [end, endRef] = useState<Input | null>(null);
+
+  const [popupEventTitle, setTitle] = useState<string>("");
+  const [popupEventDescription, setDescription] = useState<string>("");
+  const [popupEventDate, setDate] = useState<MbscDateType[]>([]);
+  const [isSnackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const [snackbarConfig, setSnackbarConfig] = useState<{
+    message: string;
+    withUndo?: boolean;
+  }>({ message: "", withUndo: false });
 
   const calInst = useRef<Eventcalendar>(null);
 
   const myView = useMemo<MbscEventcalendarView>(
     () => ({
       timeline: {
-        type: "month",
+        type: "week",
         startDay: 1,
         endDay: 5,
-        startTime: "08:00",
-        endTime: "18:00",
         timeCellStep: 15,
         timeLabelStep: 30,
-        allDay: false,
       },
     }),
     []
   );
 
-  const showToast = useCallback((message: string) => {
-    setToastText(message);
-    setToastOpen(true);
-  }, []);
-
-  const handleEventCreated = useCallback((args: MbscEventCreatedEvent) => {
-    setIsEdit(false);
-    setPopupOpen(true);
-    setAnchorEl(args.target);
-  }, []);
-
-  const handleEventUpdated = useCallback(() => {
-    showToast("Appointment updated");
-  }, [showToast]);
-
-  const handleEventDeleted = useCallback(() => {
-    showToast("Appointment deleted");
-  }, [showToast]);
-
-  const handleToastClose = useCallback(() => {
-    setToastOpen(false);
-  }, []);
-
   const saveEvent = useCallback(() => {
     const newEvent = {
       id: tempEvent!.id,
-      title: eventTitle,
-      description: eventDescription,
-      start: eventDate![0],
-      end: eventDate![1],
-      allDay: eventAllDay,
+      title: popupEventTitle,
+      description: popupEventDescription,
+      start: popupEventDate[0],
+      end: popupEventDate[1],
+      resource: tempEvent!.resource,
     };
     if (isEdit) {
       const index = events.findIndex((x) => x.id === tempEvent!.id);
@@ -101,16 +100,113 @@ export default function Home() {
       setEvents([...events, newEvent]);
     }
     calInst.current?.navigateToEvent(newEvent);
+
     setPopupOpen(false);
   }, [
-    tempEvent,
-    eventTitle,
-    eventDescription,
-    eventDate,
-    eventAllDay,
     isEdit,
     events,
+    popupEventDate,
+    popupEventDescription,
+    popupEventTitle,
+    tempEvent,
   ]);
+
+  const showSnackbar = useCallback((message: string, withUndo?: boolean) => {
+    setSnackbarConfig({ message, withUndo });
+    setSnackbarOpen(true);
+  }, []);
+
+  const deleteEvent = useCallback(
+    (event: MbscCalendarEvent) => {
+      const filteredEvents = events.filter((item) => item.id !== event.id);
+      setTempEvent(event);
+      setEvents(filteredEvents);
+
+      showSnackbar("Event deleted", true);
+    },
+    [events, showSnackbar]
+  );
+
+  const loadPopupForm = useCallback((event: MbscCalendarEvent) => {
+    setTitle(event.title!);
+    setDescription(event.description);
+    setDate([event.start!, event.end!]);
+  }, []);
+
+  const titleChange = useCallback((ev: ChangeEvent<HTMLInputElement>) => {
+    setTitle(ev.target.value);
+  }, []);
+
+  const descriptionChange = useCallback((ev: ChangeEvent<HTMLInputElement>) => {
+    setDescription(ev.target.value);
+  }, []);
+
+  const dateChange = useCallback((args: MbscDatepickerChangeEvent) => {
+    setDate(args.value as MbscDateType[]);
+  }, []);
+
+  const controls = useMemo<MbscDatepickerControl[]>(() => ["datetime"], []);
+
+  const onDeleteClick = useCallback(() => {
+    deleteEvent(tempEvent!);
+    setPopupOpen(false);
+  }, [deleteEvent, tempEvent]);
+
+  const handleEventDoubleClick = useCallback(
+    (args: MbscEventClickEvent) => {
+      const nowISO = new Date().toISOString();
+      if (args.event.end! <= nowISO) {
+        setSnackbarConfig({
+          message: "Cannot edit completed events.",
+        });
+        setSnackbarOpen(true);
+        return;
+      }
+
+      if (args.event.start! <= nowISO && args.event.end! > nowISO) {
+        setSnackbarConfig({
+          message: "Cannot edit events that are currently in progress.",
+        });
+        setSnackbarOpen(true);
+        return;
+      }
+
+      setEdit(true);
+      setTempEvent({ ...args.event });
+
+      loadPopupForm(args.event);
+      setPopupOpen(true);
+    },
+    [loadPopupForm]
+  );
+
+  const handleEventCreated = useCallback(
+    (args: MbscEventCreatedEvent) => {
+      setEdit(false);
+      setTempEvent(args.event);
+
+      loadPopupForm(args.event);
+
+      setPopupOpen(true);
+    },
+    [loadPopupForm]
+  );
+
+  const handleEventDeleted = useCallback(
+    (args: MbscEventDeletedEvent) => {
+      deleteEvent(args.event);
+    },
+    [deleteEvent]
+  );
+
+  const handleEventUpdated = useCallback(() => {
+    // Here you can update the event in your storage as well, after drag & drop or resize
+  }, []);
+
+  const headerText = useMemo<string>(
+    () => (isEdit ? "Edit event" : "New Event"),
+    [isEdit]
+  );
 
   const popupButtons = useMemo<(string | MbscPopupButton)[]>(() => {
     if (isEdit) {
@@ -122,6 +218,7 @@ export default function Home() {
           },
           keyCode: "enter",
           text: "Save",
+          disabled: popupEventTitle.length < 5,
         },
       ];
     } else {
@@ -133,98 +230,113 @@ export default function Home() {
           },
           keyCode: "enter",
           text: "Add",
+          disabled: popupEventTitle.length < 5,
         },
       ];
     }
-  }, [isEdit, saveEvent]);
+  }, [isEdit, popupEventTitle.length, saveEvent]);
 
-  const onClose = useCallback(() => {
-    setEventTitle("");
-    setEventDescription("");
-    setEventAllDay(false);
-    setEventDate(undefined);
+  const onPopupClose = useCallback(() => {
+    if (!isEdit) {
+      setEvents([...events]);
+    }
+
+    setTitle("");
+    setDescription("");
+    setDate([]);
     setPopupOpen(false);
+  }, [isEdit, events]);
+
+  const handleSnackbarClose = useCallback(() => setSnackbarOpen(false), []);
+
+  const handleCellDoubleClicked = useCallback((args: MbscCellClickEvent) => {
+    if (args.date < new Date()) {
+      setSnackbarConfig({
+        message: "Cannot create events in the past.",
+      });
+      setSnackbarOpen(true);
+      return;
+    }
+
+    setEdit(false);
+    setTempEvent({ resource: args.resource, date: args.date });
+
+    setDate([args.date, new Date(args.date.getTime() + 30 * 60000)]);
+
+    setPopupOpen(true);
   }, []);
 
   return (
     <div>
-      <div className={"flex justify-end p-4"}>
-        <Button color="primary">Add Event</Button>
-      </div>
-      {/* TODO: Gabi - are we using anchorel? */}
       <Eventcalendar
         eventDelete={true}
-        cssClass="mds-healthcare"
         data={events}
-        dragTimeStep={15}
-        groupBy="date"
         resources={randomResources}
         view={myView}
-        onEventCreated={handleEventCreated}
-        onEventDeleted={handleEventDeleted}
-        onEventUpdated={handleEventUpdated}
-        clickToCreate={true}
+        ref={calInst}
+        eventOverlap={false}
         dragToCreate={true}
         dragToMove={true}
         dragToResize={true}
-        onEventCreate={(e) => console.log({ e })}
-        ref={(instance) => {
-          calInst.current = instance;
-        }}
+        onEventDoubleClick={handleEventDoubleClick}
+        onEventCreated={handleEventCreated}
+        onEventDeleted={handleEventDeleted}
+        onEventUpdated={handleEventUpdated}
+        onCellDoubleClick={handleCellDoubleClicked}
+        invalid={invalidDates}
       />
 
       <Popup
         display="center"
         fullScreen={true}
-        headerText={isEdit ? "Edit event" : "New event"}
-        anchor={anchorEl}
+        headerText={headerText}
         buttons={popupButtons}
         isOpen={popupOpen}
-        onClose={onClose}
+        onClose={onPopupClose}
       >
         <Input
           label="Title"
-          value={eventTitle}
-          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-            setEventTitle(e.target.value)
+          value={popupEventTitle}
+          onChange={titleChange}
+          maxLength={35}
+          minLength={5}
+          error={popupEventTitle.length < 5 || popupEventTitle.length > 35}
+          errorMessage={
+            popupEventTitle.length < 5 || popupEventTitle.length > 35
+              ? "Title must be between 5 and 35 characters."
+              : undefined
           }
         />
-        <Textarea
+        <Input
           label="Description"
-          value={eventDescription}
-          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-            setEventDescription(e.target.value)
-          }
+          value={popupEventDescription}
+          onChange={descriptionChange}
         />
 
-        <Switch
-          label="All-day"
-          checked={eventAllDay}
-          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-            setEventAllDay(e.target.checked)
-          }
+        <Input ref={startRef} label="Starts" />
+        <Input ref={endRef} label="Ends" />
+        <Datepicker
+          select="range"
+          controls={controls}
+          touchUi={true}
+          startInput={start}
+          endInput={end}
+          showRangeLabels={false}
+          onChange={dateChange}
+          value={popupEventDate}
+          stepMinute={15}
+          minRange={900000}
+          maxRange={86400000}
+          invalid={invalidDates}
         />
-        {/* <Input ref={startRef} label="Starts" />
-          <Input ref={endRef} label="Ends" />
-          <Datepicker
-            select="range"
-            controls={controls}
-            touchUi={true}
-            startInput={start}
-            endInput={end}
-            showRangeLabels={false}
-            responsive={datepickerResponsive}
-            onChange={dateChange}
-            value={popupEventDate}
-          />
-           */}
+
         {isEdit ? (
           <div className="mbsc-button-group">
             <Button
               className="mbsc-button-block"
               color="danger"
               variant="outline"
-              onClick={() => console.log("Delete event")}
+              onClick={onDeleteClick}
             >
               Delete event
             </Button>
@@ -232,10 +344,20 @@ export default function Home() {
         ) : null}
       </Popup>
 
-      <Toast
-        message={toastText}
-        isOpen={isToastOpen}
-        onClose={handleToastClose}
+      <Snackbar
+        message={snackbarConfig.message}
+        isOpen={isSnackbarOpen}
+        onClose={handleSnackbarClose}
+        button={
+          snackbarConfig.withUndo
+            ? {
+                action: () => {
+                  setEvents([...events, tempEvent!]);
+                },
+                text: "Undo",
+              }
+            : undefined
+        }
       />
     </div>
   );
